@@ -37,12 +37,12 @@ def render(days, t):
     counts = [c for _, c in days]
     cum = list(itertools.accumulate(counts))
     total, last90, prior90 = cum[-1], sum(counts[-90:]), sum(counts[-180:-90])
-    mult = f"{last90 / prior90:.1f}×" if prior90 else "—"
+    mult = f"{last90 / prior90:.1f}×" if prior90 else "—"  # only used in the alt text
     if total == 0:
         return "<svg xmlns='http://www.w3.org/2000/svg' width='800' height='60'><text x='0' y='30'>No contributions yet</text></svg>"
 
-    W, H = 800, 360
-    x0, x1, y0, y1 = 56, 776, 128, 316  # plot box
+    W, H = 640, 320
+    x0, x1, y0, y1 = 72, 612, 24, 268  # plot box
     step = nice_step(total)
     ymax = max(step, -(-total // step) * step)
     n = len(days)
@@ -52,37 +52,29 @@ def render(days, t):
 
     grid = "".join(
         f'<line class="grid" x1="{x0}" x2="{x1}" y1="{py(v):.1f}" y2="{py(v):.1f}"/>'
-        f'<text class="muted" x="{x0 - 8}" y="{py(v) + 4:.1f}" text-anchor="end">{v:,}</text>'
+        f'<text class="muted" x="{x0 - 10}" y="{py(v) + 5:.1f}" text-anchor="end">{v:,}</text>'
         for v in range(0, ymax + 1, step)
     )
     months = "".join(
-        f'<text class="muted" x="{px(i):.1f}" y="{y1 + 20}" text-anchor="middle">'
-        f'{date.fromisoformat(d).strftime("%b" if d[5:7] != "01" else "%b %y")}</text>'
-        for i, (d, _) in enumerate(days) if d.endswith("-01") and i > 6 and i < n - 6
-    )
-    tiles = "".join(
-        f'<text class="muted" x="{x}" y="44">{label}</text><text class="hero" x="{x}" y="82">{val}</text>'
-        for x, label, val in ((x0, "CONTRIBUTIONS · 12 MONTHS", f"{total:,}"),
-                              (x0 + 260, "LAST 90 DAYS", f"{last90:,}"),
-                              (x0 + 480, "VS PRIOR 90 DAYS", mult))
+        f'<text class="muted" x="{px(i):.1f}" y="{y1 + 30}" text-anchor="middle">'
+        f'{date.fromisoformat(d).strftime("%b")}</text>'
+        for i, (d, _) in enumerate(days) if d.endswith("-01") and int(d[5:7]) % 2 and 6 < i < n - 6
     )
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" aria-label="Cumulative GitHub contributions, last 12 months: {total:,}; last 90 days {last90:,}, {mult} the prior 90 days.">
 <style>
-text{{font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:{t['ink']}}}
-.muted{{fill:{t['muted']};font-size:11px;letter-spacing:.04em}}
-.hero{{font-size:30px;font-weight:600}}
+text{{font:18px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:{t['ink']}}}
+.muted{{fill:{t['muted']}}}
 .grid{{stroke:{t['grid']};stroke-width:1}}
 .area{{fill:{t['line']};opacity:.12}}
-.line{{fill:none;stroke:{t['line']};stroke-width:2;stroke-linejoin:round}}
+.line{{fill:none;stroke:{t['line']};stroke-width:2.5;stroke-linejoin:round}}
 .dot{{fill:{t['line']};stroke:{t['bg']};stroke-width:2}}
 .label{{font-weight:600}}
 </style>
-{tiles}
 {grid}
 <polygon class="area" points="{px(0):.1f},{y1} {pts} {x1},{y1}"/>
 <polyline class="line" points="{pts}"/>
-<circle class="dot" cx="{x1}" cy="{py(total):.1f}" r="5"/>
-<text class="label" x="{x1 - 10}" y="{py(total) - 12:.1f}" text-anchor="end">{total:,}</text>
+<circle class="dot" cx="{x1}" cy="{py(total):.1f}" r="6"/>
+<text class="label" x="{x1 - 12}" y="{py(total) - 14:.1f}" text-anchor="end">{total:,}</text>
 {months}
 </svg>"""
 

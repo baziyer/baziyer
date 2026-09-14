@@ -9,5 +9,5 @@ Founder and Product Leader building with AI:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="chart-dark.svg">
-  <img src="chart-light.svg" width="800" alt="Cumulative GitHub contributions over the last 12 months">
+  <img src="chart-light.svg" alt="Cumulative GitHub contributions over the last 12 months">
 </picture>
