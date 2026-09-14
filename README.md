@@ -7,7 +7,7 @@ Founder and Product Leader building with AI:
 - --> **H3** · HEM HTC Harness (H3) enables calibration of outputs from the Home Energy Model with in-use HTC measurements. H3 calculates the empirical HTC used by HEM's dynamic calculations, rather than using static HTC, and proposes a schema to compare HTC measurement approaches
 - **Dark Factory** · a local-first software factory for coding agents in Go
 - **Resome** · on-device generative music with biometric feedback in Swift
-- **Hashimon** · on-device generative pet in Swift
+- **Hashimon** · Generative pet in Swift
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="chart-dark.svg">
