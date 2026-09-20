@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 """Render the last year of GitHub contributions as an isometric city."""
-import json, math, os, sys, urllib.request
+import json, os, sys, urllib.request
 from datetime import date, timedelta
+
+from PIL import Image, ImageColor, ImageDraw, ImageFont
 
 LOGIN = sys.argv[1] if len(sys.argv) > 1 else "baziyer"
 CALENDAR_QUERY = """query($login:String!){ user(login:$login){ contributionsCollection{
   contributionCalendar{ weeks{ contributionDays{ date contributionCount } } } } } }"""
 
 THEMES = {
-    "light": dict(ink="#1f2328", muted="#59636e", ground="#f6f8fa", grid="#d0d7de",
+    "light": dict(bg="#ffffff", ink="#1f2328", muted="#59636e", ground="#f6f8fa", grid="#d0d7de",
                   pub_top="#79c0ff", pub_left="#218bff", pub_right="#0969da",
                   private_top="#f2cc60", private_left="#d29922", private_right="#9e6a03"),
-    "dark": dict(ink="#e6edf3", muted="#8b949e", ground="#161b22", grid="#30363d",
+    "dark": dict(bg="#010409", ink="#e6edf3", muted="#8b949e", ground="#161b22", grid="#30363d",
                  pub_top="#79c0ff", pub_left="#58a6ff", pub_right="#1f6feb",
                  private_top="#f2cc60", private_left="#d29922", private_right="#9e6a03"),
 }
+
+W, H = 800, 380
+ORIGIN_X, ORIGIN_Y, STEP_X, STEP_Y = 100, 160, 12, 3
 
 
 def graphql(query):
@@ -50,16 +55,35 @@ def polygon(css_class, points):
     return f'<polygon class="{css_class}" points="{" ".join(f"{x:.1f},{y:.1f}" for x, y in points)}"/>'
 
 
-def segment(cx, bottom, height, kind, roof=True):
+def segment_shapes(cx, bottom, height):
     half_width, half_depth = 8, 2.7
     top = bottom - height
-    left = polygon(f"{kind}-left", ((cx - half_width, top), (cx, top + half_depth),
-                                     (cx, bottom + half_depth), (cx - half_width, bottom)))
-    right = polygon(f"{kind}-right", ((cx, top + half_depth), (cx + half_width, top),
-                                       (cx + half_width, bottom), (cx, bottom + half_depth)))
-    cap = polygon(f"{kind}-top", ((cx, top - half_depth), (cx + half_width, top),
-                                   (cx, top + half_depth), (cx - half_width, top))) if roof else ""
-    return left + right + cap
+    return (
+        ((cx - half_width, top), (cx, top + half_depth), (cx, bottom + half_depth), (cx - half_width, bottom)),
+        ((cx, top + half_depth), (cx + half_width, top), (cx + half_width, bottom), (cx, bottom + half_depth)),
+        ((cx, top - half_depth), (cx + half_width, top), (cx, top + half_depth), (cx - half_width, top)),
+    )
+
+
+def segment(cx, bottom, height, kind, roof=True):
+    left, right, cap = segment_shapes(cx, bottom, height)
+    return polygon(f"{kind}-left", left) + polygon(f"{kind}-right", right) + (polygon(f"{kind}-top", cap) if roof else "")
+
+
+def layout(days):
+    first = date.fromisoformat(days[0][0])
+    grid_start = first - timedelta(days=(first.weekday() + 1) % 7)
+    cells, months = [], []
+    for day, count, private in days:
+        current = date.fromisoformat(day)
+        weekday = (current.weekday() + 1) % 7
+        week = (current - grid_start).days // 7
+        cx = ORIGIN_X + (week - weekday) * STEP_X
+        cy = ORIGIN_Y + (week + weekday) * STEP_Y
+        cells.append((week + weekday, week, weekday, cx, cy, count, private))
+        if current.day == 1:
+            months.append((ORIGIN_X + week * STEP_X, current.strftime("%b")))
+    return cells, months
 
 
 def render(days, theme):
@@ -67,33 +91,18 @@ def render(days, theme):
     if total == 0:
         return "<svg xmlns='http://www.w3.org/2000/svg' width='800' height='60'><text x='0' y='30'>No contributions yet</text></svg>"
 
-    W, H = 800, 410
-    origin_x, origin_y, step_x, step_y = 100, 190, 12, 3
-    first = date.fromisoformat(days[0][0])
-    grid_start = first - timedelta(days=(first.weekday() + 1) % 7)
     maximum = max(n for _, n, _ in days)
     public_total = sum(n - private for _, n, private in days)
     private_total = sum(private for _, _, private in days)
-    cells = []
-    month_labels = []
-
-    for day, count, private in days:
-        current = date.fromisoformat(day)
-        weekday = (current.weekday() + 1) % 7
-        week = (current - grid_start).days // 7
-        cx = origin_x + (week - weekday) * step_x
-        cy = origin_y + (week + weekday) * step_y
-        cells.append((week + weekday, week, weekday, cx, cy, count, private))
-        if current.day == 1:
-            month_labels.append(f'<text class="month" x="{origin_x + week * step_x:.1f}" y="{H - 13}">{current.strftime("%b")}</text>')
+    cells, months = layout(days)
 
     city = []
     for _, week, weekday, cx, cy, count, private in sorted(cells):
-        ground = ((cx, cy - step_y), (cx + step_x, cy), (cx, cy + step_y), (cx - step_x, cy))
+        ground = ((cx, cy - STEP_Y), (cx + STEP_X, cy), (cx, cy + STEP_Y), (cx - STEP_X, cy))
         city.append(polygon("ground", ground))
         if not count:
             continue
-        height = 5 + 120 * math.sqrt(count / maximum)
+        height = 100 * count / maximum
         private_height = height * private / count
         public_height = height - private_height
         if public_height:
@@ -113,19 +122,95 @@ text{{font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans
 <text class="total" x="24" y="32">{total:,}</text><text class="muted" x="108" y="32">contributions</text>
 <rect x="500" y="18" width="12" height="12" rx="2" fill="{t['pub_left']}"/><text x="519" y="29">{public_total:,} public</text>
 <rect x="646" y="18" width="12" height="12" rx="2" fill="{t['private_left']}"/><text x="665" y="29">{private_total:,} private</text>
-<text class="muted" x="24" y="57">One building per day · height uses a square-root scale</text>
 {"".join(city)}
-{"".join(month_labels)}
+{"".join(f'<text class="month" x="{x:.1f}" y="{H - 13}">{label}</text>' for x, label in months)}
 </svg>"""
+
+
+def load_font(size, bold=False):
+    names = ["DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
+             "/System/Library/Fonts/Supplemental/Arial Bold.ttf" if bold else "/System/Library/Fonts/Supplemental/Arial.ttf"]
+    for name in names:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            pass
+    return ImageFont.load_default()
+
+
+def render_gif(days, theme, path, frame_count=60):
+    scale = 2
+    size = (W * scale, H * scale)
+    cells, months = layout(days)
+    cells = sorted(cells)
+    maximum = max(n for _, n, _ in days)
+    total = sum(n for _, n, _ in days)
+    private_total = sum(private for _, _, private in days)
+    public_total = total - private_total
+    fonts = (load_font(26 * scale, True), load_font(16 * scale), load_font(12 * scale))
+
+    def points(shape):
+        return [(round(x * scale), round(y * scale)) for x, y in shape]
+
+    def fill(draw, shape, color, alpha=255):
+        draw.polygon(points(shape), fill=(*ImageColor.getrgb(color), alpha))
+
+    frames = []
+    for frame_number in range(frame_count):
+        center = 53 * frame_number / frame_count
+        image = Image.new("RGB", size, theme["bg"])
+        draw = ImageDraw.Draw(image, "RGBA")
+        draw.text((24 * scale, 8 * scale), f"{total:,}", font=fonts[0], fill=theme["ink"])
+        draw.text((108 * scale, 14 * scale), "contributions", font=fonts[1], fill=theme["muted"])
+        draw.rounded_rectangle((500 * scale, 18 * scale, 512 * scale, 30 * scale), 2 * scale, fill=theme["pub_left"])
+        draw.text((519 * scale, 14 * scale), f"{public_total:,} public", font=fonts[1], fill=theme["ink"])
+        draw.rounded_rectangle((646 * scale, 18 * scale, 658 * scale, 30 * scale), 2 * scale, fill=theme["private_left"])
+        draw.text((665 * scale, 14 * scale), f"{private_total:,} private", font=fonts[1], fill=theme["ink"])
+
+        for _, week, weekday, cx, cy, count, private in cells:
+            ground = ((cx, cy - STEP_Y), (cx + STEP_X, cy), (cx, cy + STEP_Y), (cx - STEP_X, cy))
+            fill(draw, ground, theme["ground"])
+            draw.line(points(ground + (ground[0],)), fill=theme["grid"], width=max(1, scale))
+            if not count:
+                continue
+            distance = abs((week - center + 26.5) % 53 - 26.5)
+            fade = max(0, 1 - distance / 7)
+            fade = fade * fade * (3 - 2 * fade)
+            alpha = round(255 * (1 - .72 * fade * weekday / 6))
+            roof_alpha = max(alpha, 120)
+            height = 100 * count / maximum
+            private_height = height * private / count
+            public_height = height - private_height
+
+            def draw_segment(bottom, segment_height, kind, roof=True):
+                left, right, cap = segment_shapes(cx, bottom, segment_height)
+                fill(draw, left, theme[f"{kind}_left"], alpha)
+                fill(draw, right, theme[f"{kind}_right"], alpha)
+                if roof:
+                    fill(draw, cap, theme[f"{kind}_top"], roof_alpha)
+
+            if public_height:
+                draw_segment(cy, public_height, "pub", not private_height)
+            if private_height:
+                draw_segment(cy - public_height, private_height, "private")
+
+        for x, label in months:
+            draw.text((x * scale, (H - 13) * scale), label, font=fonts[2], fill=theme["muted"], anchor="mm")
+        frames.append(image.resize((W, H), Image.Resampling.LANCZOS))
+
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=200, loop=0, optimize=True, disposal=2)
 
 
 if __name__ == "__main__":
     if "--check" in sys.argv:
         sample = [(f"2026-01-{day:02}", day, day // 2) for day in range(1, 15)]
         svg = render(sample, THEMES["dark"])
-        assert "public-left" in svg and "private-left" in svg and "56 public" in svg
+        assert "public-left" in svg and "private-left" in svg and "56 public" in svg and "square-root" not in svg
+        render_gif(sample, THEMES["dark"], "/tmp/chart-check.gif", 4)
+        assert os.path.getsize("/tmp/chart-check.gif") > 1000
         sys.exit()
     contributions = fetch()
     for name, colors in THEMES.items():
         with open(f"chart-{name}.svg", "w") as output:
             output.write(render(contributions, colors))
+        render_gif(contributions, colors, f"chart-{name}.gif")

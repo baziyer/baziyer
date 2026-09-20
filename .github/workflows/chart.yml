@@ -10,8 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: python3 -m pip install --disable-pip-version-check Pillow==11.2.1
       - run: python3 chart.py
         env: {GH_TOKEN: "${{ github.token }}"}
       - run: |
           git config user.name github-actions && git config user.email github-actions@github.com
-          git add chart-*.svg && git diff --cached --quiet || git commit -m "chart: refresh" && git push
+          git add chart-*.svg chart-*.gif && git diff --cached --quiet || git commit -m "chart: refresh" && git push
