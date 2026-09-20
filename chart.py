@@ -1,85 +1,131 @@
 #!/usr/bin/env python3
-"""Fetch the last 12 months of GitHub contributions and render chart.svg.
-Usage: GH_TOKEN=... python3 chart.py [login]   # writes chart-light.svg and chart-dark.svg
-"""
-import itertools, json, os, sys, urllib.request
-from datetime import date
+"""Render the last year of GitHub contributions as an isometric city."""
+import json, math, os, sys, urllib.request
+from datetime import date, timedelta
 
 LOGIN = sys.argv[1] if len(sys.argv) > 1 else "baziyer"
-QUERY = """query($login:String!){ user(login:$login){ contributionsCollection{
+CALENDAR_QUERY = """query($login:String!){ user(login:$login){ contributionsCollection{
   contributionCalendar{ weeks{ contributionDays{ date contributionCount } } } } } }"""
 
-def fetch():
-    req = urllib.request.Request(
-        "https://api.github.com/graphql",
-        data=json.dumps({"query": QUERY, "variables": {"login": LOGIN}}).encode(),
-        headers={"Authorization": f"bearer {os.environ['GH_TOKEN']}", "Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req) as r:
-        body = json.load(r)
-    if "errors" in body:
-        sys.exit(body["errors"])
-    weeks = body["data"]["user"]["contributionsCollection"]["contributionCalendar"]["weeks"]
-    return sorted((d["date"], d["contributionCount"]) for w in weeks for d in w["contributionDays"])[-365:]
-
-def nice_step(top):
-    for s in (10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000):
-        if top / s <= 5:
-            return s
-    return 100000
-
 THEMES = {
-    "light": dict(ink="#1f2328", muted="#59636e", grid="#d1d9e0", line="#2a78d6", bg="#ffffff"),
-    "dark": dict(ink="#e6edf3", muted="#8b949e", grid="#30363d", line="#3987e5", bg="#0d1117"),
+    "light": dict(ink="#1f2328", muted="#59636e", ground="#f6f8fa", grid="#d0d7de",
+                  pub_top="#79c0ff", pub_left="#218bff", pub_right="#0969da",
+                  private_top="#f2cc60", private_left="#d29922", private_right="#9e6a03"),
+    "dark": dict(ink="#e6edf3", muted="#8b949e", ground="#161b22", grid="#30363d",
+                 pub_top="#79c0ff", pub_left="#58a6ff", pub_right="#1f6feb",
+                 private_top="#f2cc60", private_left="#d29922", private_right="#9e6a03"),
 }
 
-def render(days, t):
-    counts = [c for _, c in days]
-    cum = list(itertools.accumulate(counts))
-    total, last90, prior90 = cum[-1], sum(counts[-90:]), sum(counts[-180:-90])
-    mult = f"{last90 / prior90:.1f}×" if prior90 else "—"  # only used in the alt text
+
+def graphql(query):
+    req = urllib.request.Request(
+        "https://api.github.com/graphql",
+        data=json.dumps({"query": query, "variables": {"login": LOGIN}}).encode(),
+        headers={"Authorization": f"bearer {os.environ['GH_TOKEN']}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req) as response:
+        body = json.load(response)
+    if "errors" in body:
+        sys.exit(body["errors"])
+    return body["data"]["user"]
+
+
+def fetch():
+    weeks = graphql(CALENDAR_QUERY)["contributionsCollection"]["contributionCalendar"]["weeks"]
+    totals = sorted((d["date"], d["contributionCount"]) for w in weeks for d in w["contributionDays"])[-365:]
+    private = {}
+    for start in range(0, len(totals), 50):  # Larger batches exceed GitHub's GraphQL resource limit.
+        batch = totals[start:start + 50]
+        fields = " ".join(
+            f'd{i}: contributionsCollection(from:"{day}T00:00:00Z",to:"{day}T23:59:59Z")'
+            "{restrictedContributionsCount}"
+            for i, (day, _) in enumerate(batch)
+        )
+        result = graphql(f"query($login:String!){{user(login:$login){{{fields}}}}}")
+        private.update((day, result[f"d{i}"]["restrictedContributionsCount"]) for i, (day, _) in enumerate(batch))
+    return [(day, total, private[day]) for day, total in totals]
+
+
+def polygon(css_class, points):
+    return f'<polygon class="{css_class}" points="{" ".join(f"{x:.1f},{y:.1f}" for x, y in points)}"/>'
+
+
+def segment(cx, bottom, height, kind, roof=True):
+    half_width, half_depth = 8, 2.7
+    top = bottom - height
+    left = polygon(f"{kind}-left", ((cx - half_width, top), (cx, top + half_depth),
+                                     (cx, bottom + half_depth), (cx - half_width, bottom)))
+    right = polygon(f"{kind}-right", ((cx, top + half_depth), (cx + half_width, top),
+                                       (cx + half_width, bottom), (cx, bottom + half_depth)))
+    cap = polygon(f"{kind}-top", ((cx, top - half_depth), (cx + half_width, top),
+                                   (cx, top + half_depth), (cx - half_width, top))) if roof else ""
+    return left + right + cap
+
+
+def render(days, theme):
+    total = sum(n for _, n, _ in days)
     if total == 0:
         return "<svg xmlns='http://www.w3.org/2000/svg' width='800' height='60'><text x='0' y='30'>No contributions yet</text></svg>"
 
-    W, H = 640, 320
-    x0, x1, y0, y1 = 72, 612, 24, 268  # plot box
-    step = nice_step(total)
-    ymax = max(step, -(-total // step) * step)
-    n = len(days)
-    px = lambda i: x0 + (x1 - x0) * i / (n - 1)
-    py = lambda v: y1 - (y1 - y0) * v / ymax
-    pts = " ".join(f"{px(i):.1f},{py(v):.1f}" for i, v in enumerate(cum))
+    W, H = 800, 410
+    origin_x, origin_y, step_x, step_y = 100, 190, 12, 3
+    first = date.fromisoformat(days[0][0])
+    grid_start = first - timedelta(days=(first.weekday() + 1) % 7)
+    maximum = max(n for _, n, _ in days)
+    public_total = sum(n - private for _, n, private in days)
+    private_total = sum(private for _, _, private in days)
+    cells = []
+    month_labels = []
 
-    grid = "".join(
-        f'<line class="grid" x1="{x0}" x2="{x1}" y1="{py(v):.1f}" y2="{py(v):.1f}"/>'
-        f'<text class="muted" x="{x0 - 10}" y="{py(v) + 5:.1f}" text-anchor="end">{v:,}</text>'
-        for v in range(0, ymax + 1, step)
-    )
-    months = "".join(
-        f'<text class="muted" x="{px(i):.1f}" y="{y1 + 30}" text-anchor="middle">'
-        f'{date.fromisoformat(d).strftime("%b")}</text>'
-        for i, (d, _) in enumerate(days) if d.endswith("-01") and int(d[5:7]) % 2 and 6 < i < n - 6
-    )
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" aria-label="Cumulative GitHub contributions, last 12 months: {total:,}; last 90 days {last90:,}, {mult} the prior 90 days.">
+    for day, count, private in days:
+        current = date.fromisoformat(day)
+        weekday = (current.weekday() + 1) % 7
+        week = (current - grid_start).days // 7
+        cx = origin_x + (week - weekday) * step_x
+        cy = origin_y + (week + weekday) * step_y
+        cells.append((week + weekday, week, weekday, cx, cy, count, private))
+        if current.day == 1:
+            month_labels.append(f'<text class="month" x="{origin_x + week * step_x:.1f}" y="{H - 13}">{current.strftime("%b")}</text>')
+
+    city = []
+    for _, week, weekday, cx, cy, count, private in sorted(cells):
+        ground = ((cx, cy - step_y), (cx + step_x, cy), (cx, cy + step_y), (cx - step_x, cy))
+        city.append(polygon("ground", ground))
+        if not count:
+            continue
+        height = 5 + 120 * math.sqrt(count / maximum)
+        private_height = height * private / count
+        public_height = height - private_height
+        if public_height:
+            city.append(segment(cx, cy, public_height, "public", roof=not private_height))
+        if private_height:
+            city.append(segment(cx, cy - public_height, private_height, "private"))
+
+    t = theme
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" aria-label="Isometric map of {total:,} GitHub contributions over the last year: {public_total:,} public and {private_total:,} private.">
 <style>
-text{{font:18px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:{t['ink']}}}
-.muted{{fill:{t['muted']}}}
-.grid{{stroke:{t['grid']};stroke-width:1}}
-.area{{fill:{t['line']};opacity:.12}}
-.line{{fill:none;stroke:{t['line']};stroke-width:2.5;stroke-linejoin:round}}
-.dot{{fill:{t['line']};stroke:{t['bg']};stroke-width:2}}
-.label{{font-weight:600}}
+text{{font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:{t['ink']}}}
+.total{{font-size:26px;font-weight:600}} .muted,.month{{fill:{t['muted']}}} .month{{font-size:12px;text-anchor:middle}}
+.ground{{fill:{t['ground']};stroke:{t['grid']};stroke-width:.7}}
+.public-top{{fill:{t['pub_top']}}}.public-left{{fill:{t['pub_left']}}}.public-right{{fill:{t['pub_right']}}}
+.private-top{{fill:{t['private_top']}}}.private-left{{fill:{t['private_left']}}}.private-right{{fill:{t['private_right']}}}
 </style>
-{grid}
-<polygon class="area" points="{px(0):.1f},{y1} {pts} {x1},{y1}"/>
-<polyline class="line" points="{pts}"/>
-<circle class="dot" cx="{x1}" cy="{py(total):.1f}" r="6"/>
-<text class="label" x="{x1 - 12}" y="{py(total) - 14:.1f}" text-anchor="end">{total:,}</text>
-{months}
+<text class="total" x="24" y="32">{total:,}</text><text class="muted" x="108" y="32">contributions</text>
+<rect x="500" y="18" width="12" height="12" rx="2" fill="{t['pub_left']}"/><text x="519" y="29">{public_total:,} public</text>
+<rect x="646" y="18" width="12" height="12" rx="2" fill="{t['private_left']}"/><text x="665" y="29">{private_total:,} private</text>
+<text class="muted" x="24" y="57">One building per day · height uses a square-root scale</text>
+{"".join(city)}
+{"".join(month_labels)}
 </svg>"""
 
+
 if __name__ == "__main__":
-    days = fetch()
-    for name, t in THEMES.items():
-        with open(f"chart-{name}.svg", "w") as f:
-            f.write(render(days, t))
+    if "--check" in sys.argv:
+        sample = [(f"2026-01-{day:02}", day, day // 2) for day in range(1, 15)]
+        svg = render(sample, THEMES["dark"])
+        assert "public-left" in svg and "private-left" in svg and "56 public" in svg
+        sys.exit()
+    contributions = fetch()
+    for name, colors in THEMES.items():
+        with open(f"chart-{name}.svg", "w") as output:
+            output.write(render(contributions, colors))
