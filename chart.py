@@ -138,7 +138,7 @@ def load_font(size, bold=False):
     return ImageFont.load_default()
 
 
-def render_gif(days, theme, path, frame_count=60):
+def render_gif(days, theme, path, frame_count=180):
     scale = 2
     size = (W * scale, H * scale)
     cells, months = layout(days)
@@ -156,8 +156,15 @@ def render_gif(days, theme, path, frame_count=60):
         draw.polygon(points(shape), fill=(*ImageColor.getrgb(color), alpha))
 
     frames = []
+    build_end = max(2, round(frame_count * .62))
+    hold_end = max(build_end + 1, round(frame_count * .72))
     for frame_number in range(frame_count):
-        center = 53 * frame_number / frame_count
+        if frame_number < build_end:
+            front = -2 + 58 * frame_number / (build_end - 1)
+        elif frame_number < hold_end:
+            front = 56
+        else:
+            front = -2 + 58 * (frame_number - hold_end + 1) / (frame_count - hold_end)
         image = Image.new("RGB", size, theme["bg"])
         draw = ImageDraw.Draw(image, "RGBA")
         draw.text((24 * scale, 8 * scale), f"{total:,}", font=fonts[0], fill=theme["ink"])
@@ -173,21 +180,23 @@ def render_gif(days, theme, path, frame_count=60):
             draw.line(points(ground + (ground[0],)), fill=theme["grid"], width=max(1, scale))
             if not count:
                 continue
-            distance = abs((week - center + 26.5) % 53 - 26.5)
-            fade = max(0, 1 - distance / 7)
-            fade = fade * fade * (3 - 2 * fade)
-            alpha = round(255 * (1 - .72 * fade * weekday / 6))
-            roof_alpha = max(alpha, 120)
-            height = 100 * count / maximum
+            position = week + weekday / 7
+            animated_position = position if frame_number < hold_end else 53 - position
+            progress = max(0, min(1, (front - animated_position) / 2.5))
+            progress = progress * progress * (3 - 2 * progress)
+            growth = progress if frame_number < hold_end else 1 - progress
+            if not growth:
+                continue
+            height = 100 * count / maximum * growth
             private_height = height * private / count
             public_height = height - private_height
 
             def draw_segment(bottom, segment_height, kind, roof=True):
                 left, right, cap = segment_shapes(cx, bottom, segment_height)
-                fill(draw, left, theme[f"{kind}_left"], alpha)
-                fill(draw, right, theme[f"{kind}_right"], alpha)
+                fill(draw, left, theme[f"{kind}_left"])
+                fill(draw, right, theme[f"{kind}_right"])
                 if roof:
-                    fill(draw, cap, theme[f"{kind}_top"], roof_alpha)
+                    fill(draw, cap, theme[f"{kind}_top"])
 
             if public_height:
                 draw_segment(cy, public_height, "pub", not private_height)
@@ -198,7 +207,9 @@ def render_gif(days, theme, path, frame_count=60):
             draw.text((x * scale, (H - 13) * scale), label, font=fonts[2], fill=theme["muted"], anchor="mm")
         frames.append(image.resize((W, H), Image.Resampling.LANCZOS))
 
-    frames[0].save(path, save_all=True, append_images=frames[1:], duration=200, loop=0, optimize=True, disposal=2)
+    palette = frames[build_end].quantize(colors=128)
+    frames = [frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames]
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=80, loop=0, optimize=True, disposal=1)
 
 
 if __name__ == "__main__":
@@ -206,7 +217,7 @@ if __name__ == "__main__":
         sample = [(f"2026-01-{day:02}", day, day // 2) for day in range(1, 15)]
         svg = render(sample, THEMES["dark"])
         assert "public-left" in svg and "private-left" in svg and "56 public" in svg and "square-root" not in svg
-        render_gif(sample, THEMES["dark"], "/tmp/chart-check.gif", 4)
+        render_gif(sample, THEMES["dark"], "/tmp/chart-check.gif", 12)
         assert os.path.getsize("/tmp/chart-check.gif") > 1000
         sys.exit()
     contributions = fetch()
