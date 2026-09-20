@@ -1,6 +1,6 @@
 # Baz Iyer
 
-Founder and Product Leader building with AI:
+Founder and Product Leader building with AI. Public projects include:
 
 **Vulcan** · building energy modelling in Rust, WebAssembly and TypeScript
 - **Community** · Open Source editor for the Home Energy Model. Supports imports of CAD files, tracing floor-plans, editing dwelling inputs in 2D or 3D views, validation and comparison of inputs with other energy models (e.g., SAP)
