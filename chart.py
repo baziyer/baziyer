@@ -119,7 +119,7 @@ text{{font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans
 .public-top{{fill:{t['pub_top']}}}.public-left{{fill:{t['pub_left']}}}.public-right{{fill:{t['pub_right']}}}
 .private-top{{fill:{t['private_top']}}}.private-left{{fill:{t['private_left']}}}.private-right{{fill:{t['private_right']}}}
 </style>
-<text class="total" x="24" y="32">{total:,}</text><text class="muted" x="108" y="32">contributions</text>
+<text class="total" x="24" y="32">{total:,}</text><text class="muted" x="120" y="32">contributions</text>
 <rect x="500" y="18" width="12" height="12" rx="2" fill="{t['pub_left']}"/><text x="519" y="29">{public_total:,} public</text>
 <rect x="646" y="18" width="12" height="12" rx="2" fill="{t['private_left']}"/><text x="665" y="29">{private_total:,} private</text>
 {"".join(city)}
@@ -161,7 +161,7 @@ def render_gif(days, theme, path, frame_count=60):
         image = Image.new("RGB", size, theme["bg"])
         draw = ImageDraw.Draw(image, "RGBA")
         draw.text((24 * scale, 8 * scale), f"{total:,}", font=fonts[0], fill=theme["ink"])
-        draw.text((108 * scale, 14 * scale), "contributions", font=fonts[1], fill=theme["muted"])
+        draw.text((120 * scale, 14 * scale), "contributions", font=fonts[1], fill=theme["muted"])
         draw.rounded_rectangle((500 * scale, 18 * scale, 512 * scale, 30 * scale), 2 * scale, fill=theme["pub_left"])
         draw.text((519 * scale, 14 * scale), f"{public_total:,} public", font=fonts[1], fill=theme["ink"])
         draw.rounded_rectangle((646 * scale, 18 * scale, 658 * scale, 30 * scale), 2 * scale, fill=theme["private_left"])
