@@ -13,6 +13,8 @@ Founder and Product Leader building with AI:
 <picture>
   <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" srcset="chart-dark.svg">
   <source media="(prefers-reduced-motion: reduce)" srcset="chart-light.svg">
+  <source media="(prefers-color-scheme: dark)" type="image/webp" srcset="chart-dark.webp">
   <source media="(prefers-color-scheme: dark)" srcset="chart-dark.gif">
+  <source type="image/webp" srcset="chart-light.webp">
   <img src="chart-light.gif" alt="Animated isometric map of daily GitHub contributions over the last 12 months">
 </picture>

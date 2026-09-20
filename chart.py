@@ -138,7 +138,7 @@ def load_font(size, bold=False):
     return ImageFont.load_default()
 
 
-def render_gif(days, theme, path, frame_count=180):
+def render_animation(days, theme, path, frame_count=240):
     scale = 2
     size = (W * scale, H * scale)
     cells, months = layout(days)
@@ -205,11 +205,15 @@ def render_gif(days, theme, path, frame_count=180):
 
         for x, label in months:
             draw.text((x * scale, (H - 13) * scale), label, font=fonts[2], fill=theme["muted"], anchor="mm")
-        frames.append(image.resize((W, H), Image.Resampling.LANCZOS))
+        frames.append(image)
 
+    frames[0].save(f"{path}.webp", save_all=True, append_images=frames[1:], duration=60,
+                   loop=0, lossless=True, method=6)
+    frames = [frame.resize((W, H), Image.Resampling.LANCZOS) for frame in frames]
     palette = frames[build_end].quantize(colors=128)
     frames = [frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames]
-    frames[0].save(path, save_all=True, append_images=frames[1:], duration=80, loop=0, optimize=True, disposal=1)
+    frames[0].save(f"{path}.gif", save_all=True, append_images=frames[1:], duration=60,
+                   loop=0, optimize=True, disposal=1)
 
 
 if __name__ == "__main__":
@@ -217,11 +221,11 @@ if __name__ == "__main__":
         sample = [(f"2026-01-{day:02}", day, day // 2) for day in range(1, 15)]
         svg = render(sample, THEMES["dark"])
         assert "public-left" in svg and "private-left" in svg and "56 public" in svg and "square-root" not in svg
-        render_gif(sample, THEMES["dark"], "/tmp/chart-check.gif", 12)
-        assert os.path.getsize("/tmp/chart-check.gif") > 1000
+        render_animation(sample, THEMES["dark"], "/tmp/chart-check", 12)
+        assert os.path.getsize("/tmp/chart-check.gif") > 1000 and os.path.getsize("/tmp/chart-check.webp") > 1000
         sys.exit()
     contributions = fetch()
     for name, colors in THEMES.items():
         with open(f"chart-{name}.svg", "w") as output:
             output.write(render(contributions, colors))
-        render_gif(contributions, colors, f"chart-{name}.gif")
+        render_animation(contributions, colors, f"chart-{name}")
