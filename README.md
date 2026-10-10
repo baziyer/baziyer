@@ -7,14 +7,3 @@ Founder and Product Leader. Public (open source) projects include:
 - **H3** · HEM HTC Harness (H3) compares and calibrates Home Energy Model outputs with in-use HTC measurements. H3 calculates the empirical HTC used by HEM's dynamic calculations, and proposes a schema to compare HTC measurements
 
 **Dark Factory** · a local-first software factory for coding agents in Go
-  
-  and more coming soon...
-
-<picture>
-  <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" srcset="chart-dark.svg">
-  <source media="(prefers-reduced-motion: reduce)" srcset="chart-light.svg">
-  <source media="(prefers-color-scheme: dark)" type="image/webp" srcset="chart-dark.webp">
-  <source media="(prefers-color-scheme: dark)" srcset="chart-dark.gif">
-  <source type="image/webp" srcset="chart-light.webp">
-  <img src="chart-light.gif" alt="Animated isometric map of daily GitHub contributions over the last 12 months">
-</picture>
